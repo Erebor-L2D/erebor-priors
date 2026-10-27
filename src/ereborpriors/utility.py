@@ -89,3 +89,16 @@ def ten_to_x(x: float | np.ndarray) -> float | np.ndarray:
         float | np.ndarray: 10 raised to the power of x.
     """
     return 10 ** x
+
+def decouple_spin_sign(a, xI0):
+        # Decouple the spin sign from a
+
+        xI0 = np.sign(a) * 1.0  # inclination is either 1 or -1 depending on the sign of a
+        a = np.abs(a)  # take the absolute value of a
+        return a, xI0
+
+def couple_spin_sign(a, xI0):
+    # Couple the spin sign back into a
+    a = np.sign(xI0) * a  # restore the sign of a based on xI0
+    xI0 = 1.0
+    return a, xI0
