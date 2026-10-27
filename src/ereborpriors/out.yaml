@@ -1,0 +1,20 @@
+branch_name: example
+priors:
+- name: mass
+  prior_kwargs:
+    maximum: 1000.0
+    minimum: 0.001
+    name: mass
+    return_gpu: true
+    use_cupy: false
+  prior_type: UniformDistribution
+- name: spin
+  prior_kwargs:
+    mu: 0.5
+    name: spin
+    return_gpu: true
+    sigma: 0.1
+    use_cupy: false
+  prior_type: Gaussian
+return_gpu: false
+use_cupy: false
