@@ -111,7 +111,7 @@ class UniformInComovingVolume(Prior):
     A class representing a uniform prior in comoving volume.
     """
 
-    def __init__(self, minimum: float, maximum: float, cosmology: typing.Optional[str] = "Planck18", num_points: typing.Optional[int] = 1000, **kwargs):
+    def __init__(self, minimum: float, maximum: float, cosmology: typing.Optional[str] = "Planck15", num_points: typing.Optional[int] = 1000, **kwargs):
         """
         Initializes the UniformInComovingVolume instance.
 
