@@ -15,35 +15,35 @@ class GBPrior(GFBasePrior):
     A class representing the GB prior, inheriting from GFBasePrior.
     """
 
-    def __init__(self, priors_in: dict[str, typing.Any] = None, branch_name: str = "gb", include_fdot: bool = True, **kwargs):
+    def __init__(self, priors_in: dict[str, typing.Any] = None, branch_name: str = "gb", include_fddot: bool = True, **kwargs):
         """
         Initializes the GBPrior instance.
 
         Args:
             priors_in (dict[str, typing.Any]): A dictionary containing the priors for the GB prior.
             branch_name (str): The name of the branch associated with this prior. Default is "gb".
-            include_fdot (bool): Whether to include the fdot parameter in the physical space.
+            include_fddot (bool): Whether to include the frequency second derivative in the physical space.
             **kwargs: Additional keyword arguments to be passed to the GFBasePrior constructor.
         """
 
         super().__init__(branch_name=branch_name, priors_in=priors_in, **kwargs)
 
-        self.include_fdot = include_fdot
+        self.include_fddot = include_fddot
 
     @classmethod
-    def prior_factory(cls, branch_name: str = "gb", include_fdot: bool = True) -> GBPrior:
+    def prior_factory(cls, branch_name: str = "gb", include_fddot: bool = True) -> GBPrior:
         """
         Factory method to create an instance of GBPrior.
 
         Args:
             branch_name (str): The name of the branch associated with this prior. Default is "gb". Included for future flexibility for vgbs.
-            include_fdot (bool): Whether to include the fdot parameter in the physical space.
+            include_fddot (bool): Whether to include the frequency second derivative in the physical space.
 
         Returns:
             GBPrior: An instance of GBPrior.
         """
         priors_in = cls.build_priors(cls)
-        out = cls(branch_name=branch_name, priors_in=priors_in, include_fdot=include_fdot)
+        out = cls(branch_name=branch_name, priors_in=priors_in, include_fddot=include_fddot)
         return out
 
     def build_priors(self) -> dict[str, typing.Any]:
@@ -54,8 +54,8 @@ class GBPrior(GFBasePrior):
             dict[str, typing.Any]: A dictionary containing the priors for the GB prior.
         """
         priors_in = {
-            "logA": UniformDistribution(np.log(10**(-23.2)), np.log(10**(-20)), name="log amplitude", latex_label=r"$\log A$", unit=None),
-            ("f0", "fdot"): F0FdotPrior(f0_min=0.1, f0_max=1e3, f0_units="mHz"),
+            "logA": UniformDistribution(np.log(10**(-23.5)), np.log(10**(-20)), name="log amplitude", latex_label=r"$\log A$", unit=None),
+            ("f0", "fdot"): F0FdotPrior(f0_min=0.1, f0_max=30, f0_units="mHz"),
             "phi0": UniformDistribution(0, 2 * np.pi, name="starting phase", latex_label=r"$\phi_{0}$", unit=r"$\rm rad$", boundary="periodic"),
             "cos_iota": UniformDistribution(-1 + EPS, 1 - EPS, name="cos inclination", latex_label=r"$\cos \iota$", unit=None),
             "psi": UniformDistribution(0, 2 * np.pi, name="polarization angle", latex_label=r"$\psi$", unit=r"$\rm rad$", boundary="periodic"),
@@ -72,7 +72,7 @@ class GBPrior(GFBasePrior):
         Returns:
             list[str]: A list of parameter names in the output basis.
         """
-        if self.include_fdot:
+        if self.include_fddot:
             return ["A", "f0", "fdot", "fddot", "phi0", "iota", "psi", "alpha", "delta"]
         
         return ["A", "f0", "fdot", "phi0", "iota", "psi", "alpha", "delta"]
@@ -107,7 +107,7 @@ class GBPrior(GFBasePrior):
             "delta": np.sin,
         }
 
-        if self.include_fdot:
+        if self.include_fddot:
             fill_dict = {"fddot": 0.0}
         else:
             fill_dict = None

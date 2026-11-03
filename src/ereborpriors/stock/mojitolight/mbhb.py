@@ -42,7 +42,7 @@ class MBHBPrior(GFBasePrior):
         """
         priors_in = {
             "logM": UniformDistribution(np.log(1e5).item(), np.log(1e8).item(), name="log total mass", latex_label=r"$\log M$", unit=None),
-            "logq": UniformDistribution(np.log(1).item(), np.log(10).item(), name="log mass ratio", latex_label=r"$\log q$", unit=None),
+            "q": UniformDistribution(1, 10, name="mass ratio", latex_label=r"$q$", unit=None),
             "s1z": UniformDistribution(-1 + EPS, 1 - EPS, name="s1z", latex_label=r"$s_{1z}$", unit=None),
             "s2z": UniformDistribution(-1 + EPS, 1 - EPS, name="s2z", latex_label=r"$s_{2z}$", unit=None),
             "d_L": UniformInComovingVolume(1, 150, name="luminosity distance", latex_label=r"$d_L$", unit=r"$\rm Gpc$"),
@@ -77,14 +77,13 @@ class MBHBPrior(GFBasePrior):
 
         key_map = {
             "logM": "m1",
-            "logq": "m2",
+            "q": "m2",
             "cos_iota": "iota",
             "sin_delta": "delta",
         }
 
         forward_transforms = {
             "m1": np.exp,
-            "m2": np.exp,
             "d_L": times_thousands,
             "iota": np.arccos,
             "delta": np.arcsin,
@@ -93,7 +92,6 @@ class MBHBPrior(GFBasePrior):
 
         inverse_transforms = {
             "m1": np.log,
-            "m2": np.log,
             "d_L": over_thousands,
             "iota": np.cos,
             "delta": np.sin,

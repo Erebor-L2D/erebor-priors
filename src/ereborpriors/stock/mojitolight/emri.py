@@ -35,15 +35,15 @@ class EMRIPrior(GFBasePrior):
             self: The instance of the class.
 
         Returns:
-            dict[str, typing.Any]: A dictionary containing the priors for the MBHB prior.
+            dict[str, typing.Any]: A dictionary containing the priors for the EMRI prior.
         """
         priors_in = {
-            "log_m1": UniformDistribution(np.log(1e5).item(), np.log(1e7).item(), name="log primary mass", latex_label=r"$\log m_1$", unit=None),
+            "log_m1": UniformDistribution(np.log(1e5).item(), np.log(10**7.3).item(), name="log primary mass", latex_label=r"$\log m_1$", unit=None),
             "m2": UniformDistribution(1.0, 200.0, name="secondary mass", latex_label=r"$m_2$", unit=r"$M_\odot$"),
             "a": UniformDistribution(-1 + EPS, 1 - EPS, name="primary spin", latex_label=r"$a$", unit=None),
-            "p0": UniformDistribution(5.0, 100.0, name="initial semi-latus rectum", latex_label=r"$p_{0}$", unit=None),
-            "e0": UniformDistribution(0.001, 0.8, name="initial eccentricity", latex_label=r"$e_{0}$", unit=None),
-            "d_L": UniformInComovingVolume(1, 150, name="luminosity distance", latex_label=r"$d_L$", unit=r"$\rm Gpc$"),
+            "p0": UniformDistribution(1.0, 20.0, name="initial semi-latus rectum", latex_label=r"$p_{0}$", unit=None),
+            "e0": UniformDistribution(0.0, 0.8, name="initial eccentricity", latex_label=r"$e_{0}$", unit=None),
+            "d_L": UniformInComovingVolume(0.1, 10, name="luminosity distance", latex_label=r"$d_L$", unit=r"$\rm Gpc$"),
             "cos_qK":  UniformDistribution(-1 + EPS, 1 - EPS, name="cos polar angle", latex_label=r"$\cos \theta_{\rm K}$", unit=None),
             "phiK": UniformDistribution(0, 2 * np.pi, name="azimuthal angle", latex_label=r"$\phi_{\rm K}$", unit=r"$\rm rad$", boundary="periodic"),
             "Phi_phi0": UniformDistribution(0, 2 * np.pi, name="initial azimuthal phase", latex_label=r"$\Phi_{\phi_0}$", unit=r"$\rm rad$", boundary="periodic"),
