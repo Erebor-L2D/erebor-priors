@@ -4,7 +4,20 @@ Utility functions for the ereborpriors package and transformations between sampl
 
 import numpy as np
 
+try:
+    import cupy as cp
+except (ModuleNotFoundError, ImportError):
+    cp = None  # type: ignore
+
 EPS = 1e-9 # small number to avoid numerical issues in the priors
+
+def get_array_module(x: float | np.ndarray) -> type:
+    if isinstance(x, np.ndarray):
+        return np
+    elif cp is not None and isinstance(x, cp.ndarray):
+        return cp
+    else:
+        raise TypeError("Input must be a numpy or CuPy array.")
 
 def total_mass_mass_ratio_to_component_masses(total_mass: float | np.ndarray, mass_ratio: float | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -59,31 +72,31 @@ def times_thousands(x: float | np.ndarray) -> np.ndarray:
     Multiply value(s) by 1000. Used for converting from Hz to mHz, Gpc to Mpc, etc.
 
     Args:
-        x (float | np.ndarray): Value(s) to be multiplied.
+        x (float | np.ndarray | cp.ndarray): Value(s) to be multiplied.
 
     Returns:
         np.ndarray: Value(s) multiplied by 1000.
     """
-    return np.asarray(x) * 1e3
+    return x * 1e3
 
 def over_thousands(x: float | np.ndarray) -> np.ndarray:
     """
     Divide value(s) by 1000. Used for converting from mHz to Hz, Mpc to Gpc, etc.
 
     Args:
-        x (float | np.ndarray): Value(s) to be divided.
+        x (float | np.ndarray | cp.ndarray): Value(s) to be divided.
 
     Returns:
         np.ndarray: Value(s) divided by 1000.
     """
-    return np.asarray(x) * 1e-3
+    return x * 1e-3
 
 def ten_to_x(x: float | np.ndarray) -> float | np.ndarray:
     """
     Compute 10 raised to the power of x.
 
     Args:
-        x (float | np.ndarray): Exponent(s).
+        x (float | np.ndarray | cp.ndarray): Exponent(s).
 
     Returns:
         float | np.ndarray: 10 raised to the power of x.
