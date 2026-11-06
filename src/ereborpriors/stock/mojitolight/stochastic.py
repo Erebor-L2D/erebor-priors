@@ -57,20 +57,20 @@ class NoisePrior(GFBasePrior):
             dict[str, typing.Any]: A dictionary containing the priors for the MBHB prior.
         """
 
-        prior_oms = UniformDistribution(1e-12, 1e-10, name="oms amplitude", latex_label=r"$S_{\rm oms}$", unit=r"$\rm m / \sqrt{\rm Hz}$")
-        prior_tm = UniformDistribution(1e-15, 1e-13, name="tm amplitude", latex_label=r"$S_{\rm tm}$", unit=r"$\rm m s^{-2} / \sqrt{\rm Hz}$")
+        prior_oms = UniformDistribution(-12, -10, name="oms log-amplitude", latex_label=r"$ \log S_{\rm oms}$", unit=r"$\rm m / \sqrt{\rm Hz}$")
+        prior_tm = UniformDistribution(-16, -13, name="tm log-amplitude", latex_label=r"$ \log S_{\rm tm}$", unit=r"$\rm m s^{-2} / \sqrt{\rm Hz}$")
 
         if model_type == "parametric-symmetric":
             priors_in = {
-                "S_oms": prior_oms,
-                "S_tm": prior_tm,
+                "logS_oms": prior_oms,
+                "logS_tm": prior_tm,
             }
         elif model_type == "parametric-asymmetric":
             priors_in = {}
 
             for mosa in MOSA_NAMES:
-                priors_in[f"S_oms_{mosa}"] = prior_oms
-                priors_in[f"S_tm_{mosa}"] = prior_tm
+                priors_in[f"logS_oms_{mosa}"] = prior_oms
+                priors_in[f"logS_tm_{mosa}"] = prior_tm
         elif model_type == "splines":
             raise NotImplementedError("Spline noise model is not implemented yet.")
 
@@ -83,7 +83,15 @@ class NoisePrior(GFBasePrior):
         Returns:
             list[str]: A list of parameter names in the output basis.
         """
-        return self.get_input_basis()
+        output_basis = []
+        if len(self.priors_in) == 2:
+            output_basis = ["S_oms", "S_tm"]
+        else:
+            for mosa in MOSA_NAMES:
+                output_basis.append(f"S_oms_{mosa}")
+                output_basis.append(f"S_tm_{mosa}")
+
+        return output_basis
 
     def get_transforms(self) -> TransformContainer:
         """
@@ -95,10 +103,36 @@ class NoisePrior(GFBasePrior):
 
         output_basis = self.get_output_basis()
 
-        key_map = {}
+        if len(output_basis) == 2:
+            key_map = {
+                "logS_oms": "S_oms",
+                "logS_tm": "S_tm",
+            }
 
-        forward_transforms = {}
-        inverse_transforms = {}
+            forward_transforms = {
+                "S_oms": ten_to_x,
+                "S_tm": ten_to_x,
+            }
+
+            inverse_transforms = {
+                "S_oms": np.log10,
+                "S_tm": np.log10,
+            }
+
+        else:
+            key_map = {}
+            forward_transforms = {}
+            inverse_transforms = {}
+
+            for mosa in MOSA_NAMES:
+                key_map[f"logS_oms_{mosa}"] = f"S_oms_{mosa}"
+                key_map[f"logS_tm_{mosa}"] = f"S_tm_{mosa}"
+
+                forward_transforms[f"S_oms_{mosa}"] = ten_to_x
+                forward_transforms[f"S_tm_{mosa}"] = ten_to_x
+
+                inverse_transforms[f"S_oms_{mosa}"] = np.log10
+                inverse_transforms[f"S_tm_{mosa}"] = np.log10
 
         transform_container = TransformContainer(
             input_basis=self.get_input_basis(),
@@ -158,11 +192,11 @@ class GalacticForegroundPrior(GFBasePrior):
         """
 
         priors_in = {
-            "log10_A": UniformDistribution(-46, -43, name="log10 amplitude", latex_label=r"$\log_{10} A$", unit=None),
-            "alpha_gal": UniformDistribution(1.0, 50.0, name="spectral index", latex_label=r"$\alpha_{\rm gal}$", unit=None),
-            "log10_f1": UniformDistribution(-4.0, -1.0, name="log10 f1", latex_label=r"$\log_{10} f_1$", unit=None),
+            "log10_A": UniformDistribution(-48, -40, name="log10 amplitude", latex_label=r"$\log_{10} A$", unit=None),
+            "alpha_gal": UniformDistribution(1.0, 20.0, name="spectral index", latex_label=r"$\alpha_{\rm gal}$", unit=None),
+            "log10_f1": UniformDistribution(-4.0, -2.0, name="log10 f1", latex_label=r"$\log_{10} f_1$", unit=None),
             "log10_fknee": UniformDistribution(-4.0, -2.0, name="log10 fknee", latex_label=r"$\log_{10} f_{\rm knee}$", unit=None),
-            "log10_f2": UniformDistribution(-4.0, -1.0, name="log10 f2", latex_label=r"$\log_{10} f_2$", unit=None),
+            "log10_f2": UniformDistribution(-3.0, -1.0, name="log10 f2", latex_label=r"$\log_{10} f_2$", unit=None),
         }
 
         return priors_in
