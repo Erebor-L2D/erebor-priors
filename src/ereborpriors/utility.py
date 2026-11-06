@@ -5,7 +5,7 @@ Utility functions for the ereborpriors package and transformations between sampl
 import numpy as np
 
 try:
-    import cupy as cp
+    import cupy as cp # type: ignore
 except (ModuleNotFoundError, ImportError):
     cp = None  # type: ignore
 
