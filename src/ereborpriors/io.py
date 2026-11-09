@@ -2,6 +2,7 @@
 Input/Output utilities for the Erebors Priors package.
 """
 from __future__ import annotations
+import typing
 import yaml
 import re
 
@@ -27,6 +28,20 @@ _Loader.add_implicit_resolver(
     re.compile(r"^[-+]?[0-9][0-9_]*(?:\.[0-9_]*)?[eE][-+]?[0-9]+$"),
     list("-+0123456789"),
 )
+
+def _yaml_safe(value: typing.Any) -> typing.Any:
+    """
+    Convert tuples to lists (recursively) so the value can be read back by the safe YAML loader.
+
+    Args:
+        value: The value to convert.
+
+    Returns:
+        The value with all tuples replaced by lists.
+    """
+    if isinstance(value, (tuple, list)):
+        return [_yaml_safe(v) for v in value]
+    return value
 
 if __name__ == "__main__":
     filename = "prior_example.yaml"

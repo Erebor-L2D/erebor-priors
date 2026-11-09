@@ -13,7 +13,7 @@ from eryn.utils.transform import TransformContainer
 from eryn.utils.periodic import PeriodicContainer
 
 from ereborpriors import priors
-from ereborpriors.io import _Loader
+from ereborpriors.io import _Loader, _yaml_safe
 
 PRIOR_MODULES = [eryn.priors, priors]
 
@@ -119,20 +119,6 @@ def get_priors_dict(entries: typing.List[typing.Dict[str, typing.Any]]) -> dict[
         dict[str, Prior | JointPrior]: A dictionary mapping parameter names to their corresponding prior instances.
     """
     return {name: prior for name, prior in (get_prior_from_entry(entry) for entry in entries)}
-
-def _yaml_safe(value: typing.Any) -> typing.Any:
-    """
-    Convert tuples to lists (recursively) so the value can be read back by the safe YAML loader.
-
-    Args:
-        value: The value to convert.
-
-    Returns:
-        The value with all tuples replaced by lists.
-    """
-    if isinstance(value, (tuple, list)):
-        return [_yaml_safe(v) for v in value]
-    return value
 
 class GFBasePrior(ProbDistContainer):
     """
