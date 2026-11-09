@@ -1,0 +1,87 @@
+branch_name: sobhb
+priors:
+- name:
+  - Mc
+  - eta
+  prior_kwargs:
+    eta_max: 0.2499999
+    eta_min: 0.1
+    m_max: 130.0
+    m_min: 5.0
+    mc_max: 100.0
+    mc_min: 5.0
+    names:
+    - Mc
+    - eta
+    num_grid: 100000
+  prior_type: ChirpMassEtaUniformComponentMasses
+- name: cosinc
+  prior_kwargs:
+    maximum: 1.0
+    minimum: -1.0
+    name: cosinc
+    return_gpu: true
+    use_cupy: false
+  prior_type: UniformDistribution
+- name: dist
+  prior_kwargs:
+    cosmology: Planck15
+    maximum: 1.0
+    minimum: 0.01
+    num_points: 1000
+  prior_type: UniformInComovingVolume
+- name: f0
+  prior_kwargs:
+    maximum: 0.08
+    minimum: 0.001
+    name: f0
+    return_gpu: true
+    use_cupy: false
+  prior_type: UniformDistribution
+- name: s1
+  prior_kwargs:
+    maximum: 0.99
+    minimum: -0.99
+    name: s1
+    return_gpu: true
+    use_cupy: false
+  prior_type: UniformDistribution
+- name: s2
+  prior_kwargs:
+    maximum: 0.99
+    minimum: -0.99
+    name: s2
+    return_gpu: true
+    use_cupy: false
+  prior_type: UniformDistribution
+- name: phi_coal
+  prior_kwargs:
+    maximum: 6.283185307179586
+    minimum: 0.0
+    name: phi_coal
+    return_gpu: true
+    use_cupy: false
+  prior_type: UniformDistribution
+- name: psi
+  prior_kwargs:
+    maximum: 3.141592653589793
+    minimum: 0.0
+    name: psi
+    return_gpu: true
+    use_cupy: false
+  prior_type: UniformDistribution
+- name: ra
+  prior_kwargs:
+    maximum: 6.283185307179586
+    minimum: 0.0
+    name: ra
+    return_gpu: true
+    use_cupy: false
+  prior_type: UniformDistribution
+- name: dec
+  prior_kwargs:
+    maximum: 1.5707963267948966
+    minimum: -1.5707963267948966
+  prior_type: CosineDeclination
+return_gpu: false
+use_cupy: false

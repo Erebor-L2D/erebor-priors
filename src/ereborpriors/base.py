@@ -94,6 +94,8 @@ def get_prior_from_entry(entry: typing.Dict[str, typing.Any]) -> tuple[str, Prio
         tuple[str, Prior | JointPrior]: A tuple containing the parameter name and the corresponding prior instance.
     """
     name = entry["name"]
+    if isinstance(name, list):  # joint-prior keys are tuples, written to YAML as lists
+        name = tuple(name)
     prior_type = entry["prior_type"]
     prior_kwargs = entry.get("prior_kwargs", {})
 
@@ -117,6 +119,20 @@ def get_priors_dict(entries: typing.List[typing.Dict[str, typing.Any]]) -> dict[
         dict[str, Prior | JointPrior]: A dictionary mapping parameter names to their corresponding prior instances.
     """
     return {name: prior for name, prior in (get_prior_from_entry(entry) for entry in entries)}
+
+def _yaml_safe(value: typing.Any) -> typing.Any:
+    """
+    Convert tuples to lists (recursively) so the value can be read back by the safe YAML loader.
+
+    Args:
+        value: The value to convert.
+
+    Returns:
+        The value with all tuples replaced by lists.
+    """
+    if isinstance(value, (tuple, list)):
+        return [_yaml_safe(v) for v in value]
+    return value
 
 class GFBasePrior(ProbDistContainer):
     """
@@ -180,9 +196,9 @@ class GFBasePrior(ProbDistContainer):
             "branch_name": self.branch_name,
             "priors": [
                 {
-                    "name": name,
+                    "name": _yaml_safe(name),
                     "prior_type": prior.__class__.__name__,
-                    "prior_kwargs": {k: getattr(prior, k) for k in prior._repr_keys},
+                    "prior_kwargs": {k: _yaml_safe(getattr(prior, k)) for k in prior._repr_keys},
                 }
                 for name, prior in self.priors_in.items()
             ],
