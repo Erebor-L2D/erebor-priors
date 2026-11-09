@@ -41,6 +41,7 @@ TILES_CHIRP_MASS_MIN = [  # Msun
     70.0,
     45.0,
 ]
+
 TILES_CHIRP_MASS_MAX = [  # Msun
     60.044990194190945,
     32.04525217300808,
@@ -49,6 +50,13 @@ TILES_CHIRP_MASS_MAX = [  # Msun
     75.0,
     50.0,
 ]
+
+CHIRP_MASS_SORTING = np.argsort(TILES_CHIRP_MASS_MIN)  # sort by chirp mass
+
+SORTED_TILES_F0_MIN = (np.array(TILES_F0_MIN)[CHIRP_MASS_SORTING]).tolist()
+SORTED_TILES_F0_MAX = (np.array(TILES_F0_MAX)[CHIRP_MASS_SORTING]).tolist()
+SORTED_TILES_CHIRP_MASS_MIN = (np.array(TILES_CHIRP_MASS_MIN)[CHIRP_MASS_SORTING]).tolist()
+SORTED_TILES_CHIRP_MASS_MAX = (np.array(TILES_CHIRP_MASS_MAX)[CHIRP_MASS_SORTING]).tolist()
 
 class SOBHBPrior(GFBasePrior):
     """
@@ -90,10 +98,10 @@ class SOBHBPrior(GFBasePrior):
 
     @classmethod
     def per_source_prior_factory(cls, 
-                                f0_min: list[float] = TILES_F0_MIN,
-                                f0_max: list[float] = TILES_F0_MAX,
-                                chirp_mass_min: list[float] = TILES_CHIRP_MASS_MIN,
-                                chirp_mass_max: list[float] = TILES_CHIRP_MASS_MAX,
+                                f0_min: list[float] = SORTED_TILES_F0_MIN,
+                                f0_max: list[float] = SORTED_TILES_F0_MAX,
+                                chirp_mass_min: list[float] = SORTED_TILES_CHIRP_MASS_MIN,
+                                chirp_mass_max: list[float] = SORTED_TILES_CHIRP_MASS_MAX,
                                 ) -> list[SOBHBPrior]:
         """
         Factory method to create a list of per-source SOBHB priors.
