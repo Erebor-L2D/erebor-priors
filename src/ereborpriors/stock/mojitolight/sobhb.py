@@ -6,48 +6,19 @@ from eryn.priors import UniformDistribution
 from eryn.utils.transform import TransformContainer
 
 from ereborpriors.base import GFBasePrior
-from ereborpriors.priors import ChirpMassEtaUniformComponentMasses, CosineDeclination, UniformInComovingVolume
-from ereborpriors.utility import over_thousands, times_thousands
-
-# Parameter order of the gwtf (time-frequency) SOBHB branch. Same names and order as
-# lisatools.globalfit.stock.erebor.SOBBHTF_BASIS / the GWTF_generator parameter order, used for both
-# the sampling (input) and GWTF_generator (output) basis. 
-
-SOBHB_BASIS = [
-    "Mc",        # chirp mass (Msun, SSB frame)
-    "eta",       # symmetric mass ratio
-    "cosinc",    # cos(inclination)
-    "dist",      # luminosity distance (sampled in Gpc, Mpc in the GWTF_generator basis)
-    "f0",        # GW frequency (Hz) at the start of the data (gwtf t=0)
-    "s1",        # primary aligned spin
-    "s2",        # secondary aligned spin
-    "phi_coal",  # coalescence phase
-    "psi",       # polarisation angle (ICRS)
-    "ra",        # right ascension (ICRS)
-    "dec",       # declination (ICRS)
-]
-
-# Default ranges: lisatools.globalfit.stock.erebor.SOBBHTF_DEFAULT_LIMS, with dist converted Mpc -> Gpc.
-# Mc and f0 are per-source in practice; override them via prior_factory(mc_bounds=..., f0_bounds=...)
-# or lims={"Mc": ..., "f0": ...}.
-SOBHB_DEFAULT_LIMS = {
-    "Mc": (5.0, 100.0),   # Msun
-    "eta": (0.1, 0.2499999),
-    "cosinc": (-1.0, 1.0),
-    "dist": (0.01, 1.0),  # Gpc
-    "f0": (1.0e-3, 0.08),  # Hz
-    "s1": (-0.99, 0.99),
-    "s2": (-0.99, 0.99),
-    "phi_coal": (0.0, 2 * np.pi),
-    "psi": (0.0, np.pi),
-    "ra": (0.0, 2 * np.pi),
-    "dec": (-np.pi / 2, np.pi / 2),
-}
+from ereborpriors.priors import ChirpMassEtaUniformComponentMasses, UniformInComovingVolume
+from ereborpriors.utility import over_thousands, times_thousands, EPS, component_masses_to_chirp_mass_eta, chirp_mass_eta_to_component_masses
 
 # Default [min, max] (Msun) of the primary (m1) and secondary (m2) mass cutting the joint (Mc, eta) prior.
 # Both are lisatools' shared SOBBHTFSettings.component_mass_lims = (5, 130).
 SOBHB_DEFAULT_M1_LIMS = (5.0, 130.0)
 SOBHB_DEFAULT_M2_LIMS = (5.0, 130.0)
+SOBHB_DEFAULT_ETA_LIMS = (0.0 + EPS, 0.25 - EPS)  # symmetric mass ratio limits (m1 >= m2)
+
+TILES_F0_MIN = [1.0e-3] * 6 # placeholder for the minimum frequency of each tile in Hz
+TILES_F0_MAX = [0.1] * 6 # placeholder for the maximum frequency of each tile in Hz
+TILES_CHIRP_MASS_MIN = [5.0] * 6 # placeholder for the minimum chirp mass of each tile in Msun
+TILES_CHIRP_MASS_MAX = [100.0] * 6 # placeholder for the maximum chirp mass of each tile in Msun
 
 
 class SOBHBPrior(GFBasePrior):
@@ -60,83 +31,95 @@ class SOBHBPrior(GFBasePrior):
     - everything else uniform.
     """
 
-    branch_name = "sobhb"
+    branch_name = "sobbh"
 
     @classmethod
     def prior_factory(cls,
-                      f0_bounds: tuple[float, float] | None = None,
-                      mc_bounds: tuple[float, float] | None = None,
-                      m1_bounds: tuple[float, float] = SOBHB_DEFAULT_M1_LIMS,
-                      m2_bounds: tuple[float, float] = SOBHB_DEFAULT_M2_LIMS,
-                      lims: dict[str, tuple[float, float]] | None = None,
+                      f0_min: float = 1e-3,
+                      f0_max: float = 0.1,
+                      chirp_mass_min: float = 5.0,
+                      chirp_mass_max: float = 100.0,
                       ) -> SOBHBPrior:
         """
         Factory method to create an instance of SOBHBPrior.
 
         Args:
-            f0_bounds (tuple[float, float] | None): Bounds on f0 (Hz, at data start) for a single source.
-                Default SOBHB_DEFAULT_LIMS["f0"].
-            mc_bounds (tuple[float, float] | None): Bounds on the chirp mass (Msun) for a single source.
-                Default SOBHB_DEFAULT_LIMS["Mc"].
-            m1_bounds (tuple[float, float]): [m1_min, m1_max] (Msun) for the primary (heavier) mass.
-                Default (5, 130).
-            m2_bounds (tuple[float, float]): [m2_min, m2_max] (Msun) for the secondary (lighter) mass.
-                Default (5, 130).
-            lims (dict | None): Overrides of SOBHB_DEFAULT_LIMS, keyed by parameter name.
+            f0_min (float): Minimum value for f0 (Hz, at data start) for a single source.
+                Default 1e-3.
+            f0_max (float): Maximum value for f0 (Hz, at data start) for a single source.
+                Default 0.1.
+            chirp_mass_min (float): Minimum value for chirp mass (Msun) for a single source.
+                Default 5.0.
+            chirp_mass_max (float): Maximum value for chirp mass (Msun) for a single source.
+                Default 100.0.
 
         Returns:
             SOBHBPrior: An instance of SOBHBPrior.
         """
-        priors_in = cls.build_priors(f0_bounds, mc_bounds, m1_bounds, m2_bounds, lims)
+        priors_in = cls.build_priors(f0_min=f0_min, f0_max=f0_max, chirp_mass_min=chirp_mass_min, chirp_mass_max=chirp_mass_max)
         return cls(branch_name=cls.branch_name, priors_in=priors_in)
 
+    @classmethod
+    def per_source_prior_factory(cls, 
+                                f0_min: list[float] = TILES_F0_MIN,
+                                f0_max: list[float] = TILES_F0_MAX,
+                                chirp_mass_min: list[float] = TILES_CHIRP_MASS_MIN,
+                                chirp_mass_max: list[float] = TILES_CHIRP_MASS_MAX,
+                                ) -> list[SOBHBPrior]:
+        """
+        Factory method to create a list of per-source SOBHB priors.
+
+        Args:
+            f0_min: A list of minimum frequencies for each source.
+            f0_max: A list of maximum frequencies for each source.
+            chirp_mass_min: A list of minimum chirp masses for each source.
+            chirp_mass_max: A list of maximum chirp masses for each source.
+
+        Returns:
+            list[SOBHBPrior]: A list of per-source SOBHB priors.
+        """
+        if not (len(f0_min) == len(f0_max) == len(chirp_mass_min) == len(chirp_mass_max)):
+            raise ValueError("All input lists must have the same length.")
+
+        return [
+            cls.prior_factory(f0_min=f0_min[i],
+                                f0_max=f0_max[i],
+                                chirp_mass_min=chirp_mass_min[i],
+                                chirp_mass_max=chirp_mass_max[i])
+            for i in range(len(f0_min))
+        ]
+
     @staticmethod
-    def build_priors(f0_bounds: tuple[float, float] | None = None,
-                     mc_bounds: tuple[float, float] | None = None,
-                     m1_bounds: tuple[float, float] = SOBHB_DEFAULT_M1_LIMS,
-                     m2_bounds: tuple[float, float] = SOBHB_DEFAULT_M2_LIMS,
-                     lims: dict[str, tuple[float, float]] | None = None,
+    def build_priors(f0_min: float = 1e-3,
+                     f0_max: float = 0.1,
+                     chirp_mass_min: float = 5.0,
+                     chirp_mass_max: float = 100.0,
                      ) -> dict[str, typing.Any]:
         """
         Builds the per-source priors for the SOBHB sources.
 
         Args:
-            f0_bounds (tuple[float, float] | None): Bounds on f0 (Hz, at data start) for a single source.
-                Default SOBHB_DEFAULT_LIMS["f0"].
-            mc_bounds (tuple[float, float] | None): Bounds on the chirp mass (Msun) for a single source.
-                Default SOBHB_DEFAULT_LIMS["Mc"].
-            m1_bounds (tuple[float, float]): [m1_min, m1_max] (Msun) for the primary (heavier) mass.
-            m2_bounds (tuple[float, float]): [m2_min, m2_max] (Msun) for the secondary (lighter) mass.
-            lims (dict | None): Overrides of SOBHB_DEFAULT_LIMS, keyed by parameter name.
+            f0_min (float): Minimum value for f0 (Hz, at data start)
+            f0_max (float): Maximum value for f0 (Hz, at data start)
+            chirp_mass_min (float): Minimum value for chirp mass (Msun) for a single source.
+            chirp_mass_max (float): Maximum value for chirp mass (Msun) for a single source.
 
         Returns:
-            dict[str, typing.Any]: The priors, in SOBHB_BASIS column order.
+            dict[str, typing.Any]: The priors, in sampling column order.
         """
-        lims = dict(lims or {})
-        unknown = set(lims) - set(SOBHB_DEFAULT_LIMS)
-        if unknown:
-            raise KeyError(f"Unknown parameters in lims: {sorted(unknown)}.")
-        # Ensure that mc_bounds and f0_bounds are not given twice (as an argument and in lims).
-        for key, bounds in (("Mc", mc_bounds), ("f0", f0_bounds)):
-            if bounds is not None:
-                if key in lims:
-                    raise ValueError(f"{key} bounds given twice (as an argument and in lims).")
-                lims[key] = bounds
 
-        lims = {**SOBHB_DEFAULT_LIMS, **lims}
-
-        # ProbDistContainer assigns columns by insertion order, so this dict must follow SOBHB_BASIS.
+        # ProbDistContainer assigns columns by insertion order.
         priors_in = {
-            ("Mc", "eta"): ChirpMassEtaUniformComponentMasses(*lims["Mc"], *lims["eta"], *m1_bounds, *m2_bounds),
-            "cosinc": UniformDistribution(*lims["cosinc"], name="cosinc", latex_label=r"$\cos \iota$", unit=None),
-            "dist": UniformInComovingVolume(*lims["dist"], name="dist", latex_label=r"$d_L$", unit=r"$\rm Gpc$"),
-            "f0": UniformDistribution(*lims["f0"], name="f0", latex_label=r"$f_0$", unit=r"$\rm Hz$"),
-            "s1": UniformDistribution(*lims["s1"], name="s1", latex_label=r"$\chi_1$", unit=None),
-            "s2": UniformDistribution(*lims["s2"], name="s2", latex_label=r"$\chi_2$", unit=None),
-            "phi_coal": UniformDistribution(*lims["phi_coal"], name="phi_coal", latex_label=r"$\phi_c$", unit=r"$\rm rad$", boundary="periodic"),
-            "psi": UniformDistribution(*lims["psi"], name="psi", latex_label=r"$\psi$", unit=r"$\rm rad$", boundary="periodic"),
-            "ra": UniformDistribution(*lims["ra"], name="ra", latex_label=r"$\alpha$", unit=r"$\rm rad$", boundary="periodic"),
-            "dec": CosineDeclination(*lims["dec"], name="dec", latex_label=r"$\delta$", unit=r"$\rm rad$"),
+            ("Mc", "eta"): ChirpMassEtaUniformComponentMasses(chirp_mass_min, chirp_mass_max, *SOBHB_DEFAULT_ETA_LIMS, *SOBHB_DEFAULT_M1_LIMS, *SOBHB_DEFAULT_M2_LIMS),
+            "s1": UniformDistribution(-1.0 + EPS, 1.0 - EPS, name="s1", latex_label=r"$\chi_1$", unit=None),
+            "s2": UniformDistribution(-1.0 + EPS, 1.0 - EPS, name="s2", latex_label=r"$\chi_2$", unit=None),
+            "d_L": UniformInComovingVolume(1e-7, 1., name="luminosity distance", latex_label=r"$d_L$", unit=r"$\rm Gpc$"),
+            "cos_iota": UniformDistribution(-1.0 + EPS, 1.0 - EPS, name="cos inclination", latex_label=r"$\cos \iota$", unit=None),
+            "f0": UniformDistribution(f0_min, f0_max, name="Starting frequency", latex_label=r"$f_0$", unit=r"$\rm Hz$"),
+            "phi_coal": UniformDistribution(0, 2 * np.pi, name="Coalescence phase", latex_label=r"$\phi_c$", unit=r"$\rm rad$", boundary="periodic"),
+            "psi": UniformDistribution(0, 2 * np.pi, name="polarization angle", latex_label=r"$\psi$", unit=r"$\rm rad$", boundary="periodic"),
+            "alpha": UniformDistribution(0, 2 * np.pi, name="right ascension", latex_label=r"$\alpha$", unit=r"$\rm rad$", boundary="periodic"),
+            "sin_delta": UniformDistribution(-1 + EPS, 1 - EPS, name="sin declination", latex_label=r"$\sin \delta$", unit=None),
         }
 
         return priors_in
@@ -148,7 +131,7 @@ class SOBHBPrior(GFBasePrior):
         Returns:
             list[str]: A list of parameter names in the output basis.
         """
-        return list(SOBHB_BASIS)
+        return ["m1", "m2", "s1", "s2", "d_L", "f0", "phi_coal", "iota", "psi", "alpha", "delta"]
 
     def get_transforms(self) -> TransformContainer:
         """
@@ -159,12 +142,33 @@ class SOBHBPrior(GFBasePrior):
         Returns:
             TransformContainer: The transforms associated with the SOBHB prior.
         """
-        assert self.get_input_basis() == SOBHB_BASIS, self.get_input_basis()
+        output_basis = self.get_output_basis()
+
+        key_map = {
+            "Mc": "m1",
+            "eta": "m2",
+            "cos_iota": "iota",
+            "sin_delta": "delta",        
+        }
+
+        forward_transforms = {
+            ("m1", "m2"): chirp_mass_eta_to_component_masses,
+            "delta": np.arcsin,
+            "iota": np.arccos,
+        }
+
+        inverse_transforms = {
+            ("Mc", "eta"): component_masses_to_chirp_mass_eta,
+            "delta": np.sin,
+            "iota": np.cos,
+        }
+
         return TransformContainer(
             input_basis=self.get_input_basis(),
-            output_basis=self.get_output_basis(),
-            parameter_transforms={"dist": times_thousands},          # Gpc -> Mpc
-            inverse_parameter_transforms={"dist": over_thousands},   # Mpc -> Gpc
+            output_basis=output_basis,
+            key_map=key_map,
+            parameter_transforms=forward_transforms,
+            inverse_parameter_transforms=inverse_transforms,
         )
 
     def get_periodic(self) -> dict[str, float] | None:
@@ -179,10 +183,9 @@ class SOBHBPrior(GFBasePrior):
         """
         return {
             "phi_coal": 2 * np.pi,
-            "psi": np.pi,
+            "psi": 2 * np.pi,
             "ra": 2 * np.pi,
         }
-
 
 if __name__ == "__main__":
     sobhb_prior = SOBHBPrior.prior_factory()  # all defaults (SOBHB_DEFAULT_LIMS)
@@ -191,3 +194,5 @@ if __name__ == "__main__":
     print("Periodic:", sobhb_prior.get_periodic())
     sobhb_prior.to_yaml("sobhb_prior.yaml")  # Save the prior to a YAML file
     print("Transforms:", sobhb_prior.get_transforms())
+
+    breakpoint()

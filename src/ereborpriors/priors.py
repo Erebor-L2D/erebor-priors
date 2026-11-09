@@ -8,6 +8,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 from eryn.priors import Prior, JointPrior
+from .utility import component_mass_coefficients_from_eta
 
 class F0FdotPrior(JointPrior):
     """
@@ -265,26 +266,6 @@ class UniformInComovingVolume(Prior):
 
         return self._to_device(d_l_samples)
 
-def _component_mass_coefficients(eta: ArrayLike, xp=np) -> tuple[ArrayLike, ArrayLike]:
-    """
-    Coefficients c1, c2 such that m1 = c1 * Mc and m2 = c2 * Mc (m1 >= m2).
-
-    Args:
-        eta (ArrayLike): Symmetric mass ratio, in (0, 0.25].
-        xp: numpy or cupy.
-
-    Returns:
-        tuple[ArrayLike, ArrayLike]: (c1, c2).
-    """
-    total_over_mc = eta ** (-3 / 5)
-    
-    # discriminant is (1 - 4 eta)^(1/2), but we clip to avoid NaNs for eta > 0.25 due to floating-point rounding.
-    disc = xp.sqrt(xp.clip(1 - 4 * eta, 0.0, None))
-
-    # m1 = 0.5 * Mc * eta^(-3/5) * (1 + sqrt(1 - 4 eta)), m2 = 0.5 * Mc * eta^(-3/5) * (1 - sqrt(1 - 4 eta))
-    return 0.5 * total_over_mc * (1 + disc), 0.5 * total_over_mc * (1 - disc)
-
-
 class ChirpMassEtaUniformComponentMasses(JointPrior):
     r"""
     Joint prior on (chirp mass, symmetric mass ratio) that is uniform in component masses.
@@ -380,7 +361,7 @@ class ChirpMassEtaUniformComponentMasses(JointPrior):
         m1 in (m1_min, m1_max) <=> Mc in (m1_min / c1, m1_max / c1), and likewise for m2 with c2.
         """
         # m1 = c1 * Mc and m2 = c2 * Mc at this eta (c1 >= c2).
-        c1, c2 = _component_mass_coefficients(eta)
+        c1, c2 = component_mass_coefficients_from_eta(eta)
 
         # Lower bounds on Mc, one from each limit:
         mc_lo_from_box = self.mc_min        # Mc >= mc_min
@@ -456,7 +437,7 @@ class ChirpMassEtaUniformComponentMasses(JointPrior):
         in_box = (mc >= self.mc_min) & (mc <= self.mc_max) & (eta >= self.eta_min) & (eta <= self.eta_max)
         
         # Check if (mc, eta) satisfies the component-mass cut: m1_min < m1 < m1_max, m2_min < m2 < m2_max.
-        c1, c2 = _component_mass_coefficients(xp.clip(eta, self.eta_min, self.eta_max), xp=xp)
+        c1, c2 = component_mass_coefficients_from_eta(xp.clip(eta, self.eta_min, self.eta_max), xp=xp)
         m1, m2 = c1 * mc, c2 * mc
 
         return (in_box
@@ -519,54 +500,3 @@ class ChirpMassEtaUniformComponentMasses(JointPrior):
         out[valid] = self.log_norm + xp.log(mc_v) - 1.2 * xp.log(eta_v) - 0.5 * xp.log(1 - 4 * eta_v)
 
         return self._to_device(out)
-
-
-class CosineDeclination(Prior):
-    r"""
-    Prior p(x) ∝ cos(x) on [minimum, maximum] within [-pi/2, pi/2]: isotropic sky when sampling
-    the declination directly (rather than sin(dec), as eryn's SineUniform does).
-
-    .. math::
-        p(\delta) = \frac{\cos\delta}{\sin\delta_{\max} - \sin\delta_{\min}}
-    """
-
-    def __init__(self, minimum: float = -np.pi / 2, maximum: float = np.pi / 2, **kwargs):
-        """
-        Initializes the CosineDeclination instance.
-
-        Args:
-            minimum (float): Lower bound (rad), >= -pi/2. Default -pi/2.
-            maximum (float): Upper bound (rad), <= pi/2. Default pi/2.
-            **kwargs: Additional keyword arguments for the Prior.
-        """
-        if minimum < -np.pi / 2 or maximum > np.pi / 2:
-            raise ValueError(f"CosineDeclination bounds must lie within [-pi/2, pi/2], got ({minimum}, {maximum}).")
-
-        super().__init__(minimum=minimum, maximum=maximum, **kwargs)
-
-        self._sin_min = float(np.sin(minimum))
-
-        self._sin_range = float(np.sin(maximum) - np.sin(minimum))
-
-        self._log_norm = -float(np.log(self._sin_range))
-
-    def logpdf(self, x: ArrayLike, **kwargs) -> ArrayLike:
-        x_arr = self.xp.asarray(x)
-        # Return -inf outside the bounds, log(cos(x)) inside, with normalisation.
-        out = self.xp.full_like(x_arr, -self.xp.inf, dtype=self.xp.float64)
-        
-        mask = (x_arr >= self.minimum) & (x_arr <= self.maximum)
-        
-        out[mask] = self._log_norm + self.xp.log(self.xp.cos(x_arr[mask]))
-        
-        return self._to_device(out)
-
-    def rvs(self, size: int | tuple[int, ...] = (1,), **kwargs) -> ArrayLike:
-        if isinstance(size, int):
-        
-            size = (size,)
-        
-        u = self.xp.random.uniform(0, 1, size=size)
-        
-        return self._to_device(self.xp.arcsin(self._sin_min + u * self._sin_range))
-
