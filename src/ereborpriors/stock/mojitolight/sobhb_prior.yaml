@@ -6,8 +6,10 @@ priors:
   prior_kwargs:
     eta_max: 0.2499999
     eta_min: 0.1
-    m_max: 130.0
-    m_min: 5.0
+    m1_max: 130.0
+    m1_min: 5.0
+    m2_max: 130.0
+    m2_min: 5.0
     mc_max: 100.0
     mc_min: 5.0
     names:

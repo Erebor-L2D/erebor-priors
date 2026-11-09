@@ -289,9 +289,9 @@ class ChirpMassEtaUniformComponentMasses(JointPrior):
     r"""
     Joint prior on (chirp mass, symmetric mass ratio) that is uniform in component masses.
 
-    Port of ``lisatools.utils.utility.ErynEtaMcPrior`` used by the gwtf SOBBH branch
-    (``SOBBHTFSetup``). The support is the box ``Mc in [mc_min, mc_max]``,
-    ``eta in [eta_min, eta_max]``, cut by ``m_min < m2 <= m1 < m_max``. On it,
+    The support is the box ``Mc in [mc_min, mc_max]``,
+    ``eta in [eta_min, eta_max]``, cut by ``m1_min < m1 < m1_max`` and ``m2_min < m2 < m2_max``
+    (with ``m1 >= m2``; pass equal limits for a shared component-mass box). On it,
 
     .. math::
         p(\mathcal{M}_c, \eta) = \frac{1}{A}\, \mathcal{M}_c\, \eta^{-6/5} (1 - 4\eta)^{-1/2},
@@ -301,6 +301,7 @@ class ChirpMassEtaUniformComponentMasses(JointPrior):
 
     Samples are drawn from the (seperable) factorised density (Mc ∝ Mc, eta ∝ eta^-6/5 (1-4 eta)^-1/2)
     and rejected outside the component-mass cut, which is exact because the density factorises.
+    Separate m1 / m2 limits only change the support (rejection test and area), not the density.
     """
 
     def __init__(
@@ -309,8 +310,10 @@ class ChirpMassEtaUniformComponentMasses(JointPrior):
         mc_max: float,
         eta_min: float,
         eta_max: float,
-        m_min: float,
-        m_max: float,
+        m1_min: float,
+        m1_max: float,
+        m2_min: float,
+        m2_max: float,
         names: typing.Sequence[str] = ("Mc", "eta"),
         num_grid: int = 100000,
         **kwargs,
@@ -323,8 +326,10 @@ class ChirpMassEtaUniformComponentMasses(JointPrior):
             mc_max (float): Maximum chirp mass (Msun).
             eta_min (float): Minimum symmetric mass ratio (> 0).
             eta_max (float): Maximum symmetric mass ratio (< 0.25, the density diverges at 0.25).
-            m_min (float): Minimum component mass (Msun).
-            m_max (float): Maximum component mass (Msun).
+            m1_min (float): Minimum primary (heavier) mass (Msun).
+            m1_max (float): Maximum primary (heavier) mass (Msun).
+            m2_min (float): Minimum secondary (lighter) mass (Msun).
+            m2_max (float): Maximum secondary (lighter) mass (Msun).
             names (Sequence[str]): Parameter names of the two columns. Default ("Mc", "eta").
             num_grid (int): Number of evenly spaced eta nodes for the tabulated eta inverse CDF.
                 Default 100000. The trapezoid CDF resolves the eta -> 0.25 spike only when the
@@ -337,15 +342,19 @@ class ChirpMassEtaUniformComponentMasses(JointPrior):
             raise ValueError(f"Need 0 < mc_min < mc_max, got ({mc_min}, {mc_max}).")
         if not 0 < eta_min < eta_max < 0.25:
             raise ValueError(f"Need 0 < eta_min < eta_max < 0.25, got ({eta_min}, {eta_max}).")
-        if not 0 < m_min < m_max:
-            raise ValueError(f"Need 0 < m_min < m_max, got ({m_min}, {m_max}).")
+        if not 0 < m1_min < m1_max:
+            raise ValueError(f"Need 0 < m1_min < m1_max, got ({m1_min}, {m1_max}).")
+        if not 0 < m2_min < m2_max:
+            raise ValueError(f"Need 0 < m2_min < m2_max, got ({m2_min}, {m2_max}).")
 
         self.mc_min = mc_min
         self.mc_max = mc_max
         self.eta_min = eta_min
         self.eta_max = eta_max
-        self.m_min = m_min
-        self.m_max = m_max
+        self.m1_min = m1_min
+        self.m1_max = m1_max
+        self.m2_min = m2_min
+        self.m2_max = m2_max
         self.num_grid = num_grid
 
         kwargs.setdefault("latex_labels", (r"$\mathcal{M}_c$", r"$\eta$"))
@@ -360,16 +369,38 @@ class ChirpMassEtaUniformComponentMasses(JointPrior):
         if not area > 0:
             raise ValueError(
                 "Empty prior support: no (Mc, eta) in the box satisfies the component-mass cut "
-                f"[{m_min}, {m_max}]."
+                f"m1 in [{m1_min}, {m1_max}], m2 in [{m2_min}, {m2_max}]."
             )
         self.log_norm = -float(np.log(area))
 
     def _mc_range_at_eta(self, eta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Allowed Mc interval at fixed eta (Mc box intersected with the component-mass cut)."""
+        """Allowed Mc interval at fixed eta (Mc box intersected with the component-mass cut).
+
+        At fixed eta, m1 = c1 * Mc and m2 = c2 * Mc, so each mass limit is a limit on Mc:
+        m1 in (m1_min, m1_max) <=> Mc in (m1_min / c1, m1_max / c1), and likewise for m2 with c2.
+        """
+        # m1 = c1 * Mc and m2 = c2 * Mc at this eta (c1 >= c2).
         c1, c2 = _component_mass_coefficients(eta)
-        lo = np.maximum(self.mc_min, self.m_min / c2)
-        hi = np.minimum(self.mc_max, self.m_max / c1)
-        return lo, np.maximum(hi, lo)
+
+        # Lower bounds on Mc, one from each limit:
+        mc_lo_from_box = self.mc_min        # Mc >= mc_min
+        mc_lo_from_m1 = self.m1_min / c1    # m1 > m1_min  <=>  Mc > m1_min / c1
+        mc_lo_from_m2 = self.m2_min / c2    # m2 > m2_min  <=>  Mc > m2_min / c2
+
+        # Upper bounds on Mc, one from each limit:
+        mc_hi_from_box = self.mc_max        # Mc <= mc_max
+        mc_hi_from_m1 = self.m1_max / c1    # m1 < m1_max  <=>  Mc < m1_max / c1
+        mc_hi_from_m2 = self.m2_max / c2    # m2 < m2_max  <=>  Mc < m2_max / c2
+
+        # Mc must satisfy all of them: the tightest lower bound and the tightest upper bound.
+        lo = np.maximum(mc_lo_from_box, np.maximum(mc_lo_from_m1, mc_lo_from_m2))
+        hi = np.minimum(mc_hi_from_box, np.minimum(mc_hi_from_m1, mc_hi_from_m2))
+
+        # If the limits contradict each other (lo > hi), no Mc is allowed at this eta: collapse the
+        # interval to zero width so this eta contributes nothing to the area.
+        hi = np.maximum(hi, lo)
+
+        return lo, hi
 
     def _support_area(self) -> float:
         """
@@ -424,10 +455,13 @@ class ChirpMassEtaUniformComponentMasses(JointPrior):
         # Check if (mc, eta) is in the box.
         in_box = (mc >= self.mc_min) & (mc <= self.mc_max) & (eta >= self.eta_min) & (eta <= self.eta_max)
         
-        # Check if (mc, eta) satisfies the component-mass cut: m_min < m2 <= m1 < m_max.
+        # Check if (mc, eta) satisfies the component-mass cut: m1_min < m1 < m1_max, m2_min < m2 < m2_max.
         c1, c2 = _component_mass_coefficients(xp.clip(eta, self.eta_min, self.eta_max), xp=xp)
+        m1, m2 = c1 * mc, c2 * mc
 
-        return in_box & (c2 * mc > self.m_min) & (c1 * mc < self.m_max)
+        return (in_box
+                & (m1 > self.m1_min) & (m1 < self.m1_max)
+                & (m2 > self.m2_min) & (m2 < self.m2_max))
 
     def rvs(self, size: int | tuple[int, ...] = (1,), **kwargs) -> ArrayLike:
         xp = self.xp

@@ -44,19 +44,20 @@ SOBHB_DEFAULT_LIMS = {
     "dec": (-np.pi / 2, np.pi / 2),
 }
 
-# Component-mass box [m_min, m_max] (Msun) cutting the joint (Mc, eta) prior (SOBBHTFSettings.component_mass_lims).
-SOBHB_DEFAULT_COMPONENT_MASS_LIMS = (5.0, 130.0)
+# Default [min, max] (Msun) of the primary (m1) and secondary (m2) mass cutting the joint (Mc, eta) prior.
+# Both are lisatools' shared SOBBHTFSettings.component_mass_lims = (5, 130).
+SOBHB_DEFAULT_M1_LIMS = (5.0, 130.0)
+SOBHB_DEFAULT_M2_LIMS = (5.0, 130.0)
 
 
 class SOBHBPrior(GFBasePrior):
     """
     Prior for the gwtf (time-frequency) SOBHB branch, inheriting from GFBasePrior.
 
-    Port of ``lisatools.globalfit.stock.erebor.SOBBHTFSetup.setup_priors``. Shapes:
-    (Mc, eta) jointly uniform in component masses (cut by the component-mass box),
-    dist uniform in comoving volume (Planck15, sampled in Gpc), dec uniform on the sphere,
-    everything else uniform. Sampled in the GWTF_generator basis except dist, which the
-    transform converts Gpc -> Mpc.
+    Shapes:
+    - (Mc, eta) jointly uniform in component masses (cut by the component-mass box),
+    - dist uniform in comoving volume (Planck15, sampled in Gpc), dec uniform on the sphere,
+    - everything else uniform.
     """
 
     branch_name = "sobhb"
@@ -65,7 +66,8 @@ class SOBHBPrior(GFBasePrior):
     def prior_factory(cls,
                       f0_bounds: tuple[float, float] | None = None,
                       mc_bounds: tuple[float, float] | None = None,
-                      component_mass_bounds: tuple[float, float] = SOBHB_DEFAULT_COMPONENT_MASS_LIMS,
+                      m1_bounds: tuple[float, float] = SOBHB_DEFAULT_M1_LIMS,
+                      m2_bounds: tuple[float, float] = SOBHB_DEFAULT_M2_LIMS,
                       lims: dict[str, tuple[float, float]] | None = None,
                       ) -> SOBHBPrior:
         """
@@ -76,19 +78,23 @@ class SOBHBPrior(GFBasePrior):
                 Default SOBHB_DEFAULT_LIMS["f0"].
             mc_bounds (tuple[float, float] | None): Bounds on the chirp mass (Msun) for a single source.
                 Default SOBHB_DEFAULT_LIMS["Mc"].
-            component_mass_bounds (tuple[float, float]): Component-mass box [m_min, m_max] (Msun). Default (5, 130).
+            m1_bounds (tuple[float, float]): [m1_min, m1_max] (Msun) for the primary (heavier) mass.
+                Default (5, 130).
+            m2_bounds (tuple[float, float]): [m2_min, m2_max] (Msun) for the secondary (lighter) mass.
+                Default (5, 130).
             lims (dict | None): Overrides of SOBHB_DEFAULT_LIMS, keyed by parameter name.
 
         Returns:
             SOBHBPrior: An instance of SOBHBPrior.
         """
-        priors_in = cls.build_priors(f0_bounds, mc_bounds, component_mass_bounds, lims)
+        priors_in = cls.build_priors(f0_bounds, mc_bounds, m1_bounds, m2_bounds, lims)
         return cls(branch_name=cls.branch_name, priors_in=priors_in)
 
     @staticmethod
     def build_priors(f0_bounds: tuple[float, float] | None = None,
                      mc_bounds: tuple[float, float] | None = None,
-                     component_mass_bounds: tuple[float, float] = SOBHB_DEFAULT_COMPONENT_MASS_LIMS,
+                     m1_bounds: tuple[float, float] = SOBHB_DEFAULT_M1_LIMS,
+                     m2_bounds: tuple[float, float] = SOBHB_DEFAULT_M2_LIMS,
                      lims: dict[str, tuple[float, float]] | None = None,
                      ) -> dict[str, typing.Any]:
         """
@@ -99,7 +105,8 @@ class SOBHBPrior(GFBasePrior):
                 Default SOBHB_DEFAULT_LIMS["f0"].
             mc_bounds (tuple[float, float] | None): Bounds on the chirp mass (Msun) for a single source.
                 Default SOBHB_DEFAULT_LIMS["Mc"].
-            component_mass_bounds (tuple[float, float]): Component-mass box [m_min, m_max] (Msun).
+            m1_bounds (tuple[float, float]): [m1_min, m1_max] (Msun) for the primary (heavier) mass.
+            m2_bounds (tuple[float, float]): [m2_min, m2_max] (Msun) for the secondary (lighter) mass.
             lims (dict | None): Overrides of SOBHB_DEFAULT_LIMS, keyed by parameter name.
 
         Returns:
@@ -109,16 +116,18 @@ class SOBHBPrior(GFBasePrior):
         unknown = set(lims) - set(SOBHB_DEFAULT_LIMS)
         if unknown:
             raise KeyError(f"Unknown parameters in lims: {sorted(unknown)}.")
+        # Ensure that mc_bounds and f0_bounds are not given twice (as an argument and in lims).
         for key, bounds in (("Mc", mc_bounds), ("f0", f0_bounds)):
             if bounds is not None:
                 if key in lims:
                     raise ValueError(f"{key} bounds given twice (as an argument and in lims).")
                 lims[key] = bounds
+
         lims = {**SOBHB_DEFAULT_LIMS, **lims}
 
         # ProbDistContainer assigns columns by insertion order, so this dict must follow SOBHB_BASIS.
         priors_in = {
-            ("Mc", "eta"): ChirpMassEtaUniformComponentMasses(*lims["Mc"], *lims["eta"], *component_mass_bounds),
+            ("Mc", "eta"): ChirpMassEtaUniformComponentMasses(*lims["Mc"], *lims["eta"], *m1_bounds, *m2_bounds),
             "cosinc": UniformDistribution(*lims["cosinc"], name="cosinc", latex_label=r"$\cos \iota$", unit=None),
             "dist": UniformInComovingVolume(*lims["dist"], name="dist", latex_label=r"$d_L$", unit=r"$\rm Gpc$"),
             "f0": UniformDistribution(*lims["f0"], name="f0", latex_label=r"$f_0$", unit=r"$\rm Hz$"),
