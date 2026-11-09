@@ -174,13 +174,13 @@ class SOBHBPrior(GFBasePrior):
         Returns:
             list[str]: A list of parameter names in the output basis.
         """
-        return ["m1", "m2", "s1", "s2", "d_L", "f0", "phi_coal", "iota", "psi", "alpha", "delta"]
+        return ["m1", "m2", "s1", "s2", "d_L", "iota", "f0", "phi_coal", "psi", "alpha", "delta"]
 
     def get_transforms(self) -> TransformContainer:
         """
-        Returns the transforms associated with the SOBHB prior. The sampling basis is the
-        GWTF_generator basis apart from dist, which is sampled in Gpc and converted to the Mpc
-        GWTF_generator expects (as the MBHB prior does for d_L).
+        Returns the transforms associated with the SOBHB prior. The output basis is the
+        GWTF_generator / SOBBHTaylorT3TDIWaveform basis, in the same column order as the
+        sampling basis (d_L in Gpc, as both waveforms expect).
 
         Returns:
             TransformContainer: The transforms associated with the SOBHB prior.
@@ -227,7 +227,7 @@ class SOBHBPrior(GFBasePrior):
         return {
             "phi_coal": 2 * np.pi,
             "psi": 2 * np.pi,
-            "ra": 2 * np.pi,
+            "alpha": 2 * np.pi,
         }
 
 if __name__ == "__main__":
