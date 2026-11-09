@@ -11,15 +11,44 @@ from ereborpriors.utility import over_thousands, times_thousands, EPS, component
 
 # Default [min, max] (Msun) of the primary (m1) and secondary (m2) mass cutting the joint (Mc, eta) prior.
 # Both are lisatools' shared SOBBHTFSettings.component_mass_lims = (5, 130).
-SOBHB_DEFAULT_M1_LIMS = (5.0, 130.0)
-SOBHB_DEFAULT_M2_LIMS = (5.0, 130.0)
+SOBHB_DEFAULT_M1_LIMS = (5.0, 100.0)
+SOBHB_DEFAULT_M2_LIMS = (1.0, 80.0)
 SOBHB_DEFAULT_ETA_LIMS = (0.0 + EPS, 0.25 - EPS)  # symmetric mass ratio limits (m1 >= m2)
 
-TILES_F0_MIN = [1.0e-3] * 6 # placeholder for the minimum frequency of each tile in Hz
-TILES_F0_MAX = [0.1] * 6 # placeholder for the maximum frequency of each tile in Hz
-TILES_CHIRP_MASS_MIN = [5.0] * 6 # placeholder for the minimum chirp mass of each tile in Msun
-TILES_CHIRP_MASS_MAX = [100.0] * 6 # placeholder for the maximum chirp mass of each tile in Msun
-
+# Per-source (index = Source 0..5) search tiles from the September reliability tests
+# (September_search_reliability_tests/source_{i}/Run.py prior_bounds).
+TILES_F0_MIN = [  # Hz
+    0.015195883255956893,
+    0.01,
+    0.0055,
+    0.015195883255956893,
+    0.007,
+    0.007,
+]
+TILES_F0_MAX = [  # Hz
+    0.01571878784380862,
+    0.010657987934884174,
+    0.0056,
+    0.01571878784380862,
+    0.0071,
+    0.0071,
+]
+TILES_CHIRP_MASS_MIN = [  # Msun
+    57.00260957562929,
+    28.227482521129208,
+    60.0,
+    36.6078224011077,
+    70.0,
+    45.0,
+]
+TILES_CHIRP_MASS_MAX = [  # Msun
+    60.044990194190945,
+    32.04525217300808,
+    65.0,
+    39.7915925925793,
+    75.0,
+    50.0,
+]
 
 class SOBHBPrior(GFBasePrior):
     """
@@ -195,4 +224,3 @@ if __name__ == "__main__":
     sobhb_prior.to_yaml("sobhb_prior.yaml")  # Save the prior to a YAML file
     print("Transforms:", sobhb_prior.get_transforms())
 
-    breakpoint()
