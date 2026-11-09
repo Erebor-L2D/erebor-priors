@@ -98,23 +98,29 @@ class SOBHBPrior(GFBasePrior):
 
     @classmethod
     def per_source_prior_factory(cls, 
-                                f0_min: list[float] = SORTED_TILES_F0_MIN,
-                                f0_max: list[float] = SORTED_TILES_F0_MAX,
-                                chirp_mass_min: list[float] = SORTED_TILES_CHIRP_MASS_MIN,
-                                chirp_mass_max: list[float] = SORTED_TILES_CHIRP_MASS_MAX,
+                                sort_with_chirp_mass: bool = False,
                                 ) -> list[SOBHBPrior]:
         """
         Factory method to create a list of per-source SOBHB priors.
 
         Args:
-            f0_min: A list of minimum frequencies for each source.
-            f0_max: A list of maximum frequencies for each source.
-            chirp_mass_min: A list of minimum chirp masses for each source.
-            chirp_mass_max: A list of maximum chirp masses for each source.
+            sort_with_chirp_mass (bool): If True, the returned list of priors will be sorted by chirp mass.
+                Default is False.
 
         Returns:
             list[SOBHBPrior]: A list of per-source SOBHB priors.
         """
+        if sort_with_chirp_mass:
+            f0_min = SORTED_TILES_F0_MIN
+            f0_max = SORTED_TILES_F0_MAX
+            chirp_mass_min = SORTED_TILES_CHIRP_MASS_MIN
+            chirp_mass_max = SORTED_TILES_CHIRP_MASS_MAX
+        else:
+            f0_min = TILES_F0_MIN
+            f0_max = TILES_F0_MAX
+            chirp_mass_min = TILES_CHIRP_MASS_MIN
+            chirp_mass_max = TILES_CHIRP_MASS_MAX
+            
         if not (len(f0_min) == len(f0_max) == len(chirp_mass_min) == len(chirp_mass_max)):
             raise ValueError("All input lists must have the same length.")
 
