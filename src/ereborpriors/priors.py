@@ -264,3 +264,309 @@ class UniformInComovingVolume(Prior):
         d_l_samples = self.xp.interp(d_c_samples, self._d_c_grid, self._d_l_grid)
 
         return self._to_device(d_l_samples)
+
+def _component_mass_coefficients(eta: ArrayLike, xp=np) -> tuple[ArrayLike, ArrayLike]:
+    """
+    Coefficients c1, c2 such that m1 = c1 * Mc and m2 = c2 * Mc (m1 >= m2).
+
+    Args:
+        eta (ArrayLike): Symmetric mass ratio, in (0, 0.25].
+        xp: numpy or cupy.
+
+    Returns:
+        tuple[ArrayLike, ArrayLike]: (c1, c2).
+    """
+    total_over_mc = eta ** (-3 / 5)
+    
+    # discriminant is (1 - 4 eta)^(1/2), but we clip to avoid NaNs for eta > 0.25 due to floating-point rounding.
+    disc = xp.sqrt(xp.clip(1 - 4 * eta, 0.0, None))
+
+    # m1 = 0.5 * Mc * eta^(-3/5) * (1 + sqrt(1 - 4 eta)), m2 = 0.5 * Mc * eta^(-3/5) * (1 - sqrt(1 - 4 eta))
+    return 0.5 * total_over_mc * (1 + disc), 0.5 * total_over_mc * (1 - disc)
+
+
+class ChirpMassEtaUniformComponentMasses(JointPrior):
+    r"""
+    Joint prior on (chirp mass, symmetric mass ratio) that is uniform in component masses.
+
+    The support is the box ``Mc in [mc_min, mc_max]``,
+    ``eta in [eta_min, eta_max]``, cut by ``m1_min < m1 < m1_max`` and ``m2_min < m2 < m2_max``
+    (with ``m1 >= m2``; pass equal limits for a shared component-mass box). On it,
+
+    .. math::
+        p(\mathcal{M}_c, \eta) = \frac{1}{A}\, \mathcal{M}_c\, \eta^{-6/5} (1 - 4\eta)^{-1/2},
+
+    the Jacobian of (m1, m2) -> (Mc, eta), with ``A`` the area of the support in the
+    (m1 >= m2) component-mass plane.
+
+    Samples are drawn from the (seperable) factorised density (Mc ∝ Mc, eta ∝ eta^-6/5 (1-4 eta)^-1/2)
+    and rejected outside the component-mass cut, which is exact because the density factorises.
+    Separate m1 / m2 limits only change the support (rejection test and area), not the density.
+    """
+
+    def __init__(
+        self,
+        mc_min: float,
+        mc_max: float,
+        eta_min: float,
+        eta_max: float,
+        m1_min: float,
+        m1_max: float,
+        m2_min: float,
+        m2_max: float,
+        names: typing.Sequence[str] = ("Mc", "eta"),
+        num_grid: int = 100000,
+        **kwargs,
+    ):
+        """
+        Initializes the ChirpMassEtaUniformComponentMasses instance.
+
+        Args:
+            mc_min (float): Minimum chirp mass (Msun).
+            mc_max (float): Maximum chirp mass (Msun).
+            eta_min (float): Minimum symmetric mass ratio (> 0).
+            eta_max (float): Maximum symmetric mass ratio (< 0.25, the density diverges at 0.25).
+            m1_min (float): Minimum primary (heavier) mass (Msun).
+            m1_max (float): Maximum primary (heavier) mass (Msun).
+            m2_min (float): Minimum secondary (lighter) mass (Msun).
+            m2_max (float): Maximum secondary (lighter) mass (Msun).
+            names (Sequence[str]): Parameter names of the two columns. Default ("Mc", "eta").
+            num_grid (int): Number of evenly spaced eta nodes for the tabulated eta inverse CDF.
+                Default 100000. The trapezoid CDF resolves the eta -> 0.25 spike only when the
+                spacing (eta_max - eta_min) / num_grid is no coarser than 0.25 - eta_max; at the
+                default this holds for eta_max = 0.249999 but not 0.2499999 (rvs then slightly
+                over-samples eta near eta_max; logpdf is unaffected).
+            **kwargs: Additional keyword arguments for the JointPrior.
+        """
+        if not 0 < mc_min < mc_max:
+            raise ValueError(f"Need 0 < mc_min < mc_max, got ({mc_min}, {mc_max}).")
+        if not 0 < eta_min < eta_max < 0.25:
+            raise ValueError(f"Need 0 < eta_min < eta_max < 0.25, got ({eta_min}, {eta_max}).")
+        if not 0 < m1_min < m1_max:
+            raise ValueError(f"Need 0 < m1_min < m1_max, got ({m1_min}, {m1_max}).")
+        if not 0 < m2_min < m2_max:
+            raise ValueError(f"Need 0 < m2_min < m2_max, got ({m2_min}, {m2_max}).")
+
+        self.mc_min = mc_min
+        self.mc_max = mc_max
+        self.eta_min = eta_min
+        self.eta_max = eta_max
+        self.m1_min = m1_min
+        self.m1_max = m1_max
+        self.m2_min = m2_min
+        self.m2_max = m2_max
+        self.num_grid = num_grid
+
+        kwargs.setdefault("latex_labels", (r"$\mathcal{M}_c$", r"$\eta$"))
+        kwargs.setdefault("units", (r"$M_\odot$", None))
+        super().__init__(names=tuple(names), **kwargs)
+
+        self._setup_eta_sampler()
+
+        # Compute the area of the support in the (m1 >= m2) plane, for the normalisation constant.
+        area = self._support_area()
+
+        if not area > 0:
+            raise ValueError(
+                "Empty prior support: no (Mc, eta) in the box satisfies the component-mass cut "
+                f"m1 in [{m1_min}, {m1_max}], m2 in [{m2_min}, {m2_max}]."
+            )
+        self.log_norm = -float(np.log(area))
+
+    def _mc_range_at_eta(self, eta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Allowed Mc interval at fixed eta (Mc box intersected with the component-mass cut).
+
+        At fixed eta, m1 = c1 * Mc and m2 = c2 * Mc, so each mass limit is a limit on Mc:
+        m1 in (m1_min, m1_max) <=> Mc in (m1_min / c1, m1_max / c1), and likewise for m2 with c2.
+        """
+        # m1 = c1 * Mc and m2 = c2 * Mc at this eta (c1 >= c2).
+        c1, c2 = _component_mass_coefficients(eta)
+
+        # Lower bounds on Mc, one from each limit:
+        mc_lo_from_box = self.mc_min        # Mc >= mc_min
+        mc_lo_from_m1 = self.m1_min / c1    # m1 > m1_min  <=>  Mc > m1_min / c1
+        mc_lo_from_m2 = self.m2_min / c2    # m2 > m2_min  <=>  Mc > m2_min / c2
+
+        # Upper bounds on Mc, one from each limit:
+        mc_hi_from_box = self.mc_max        # Mc <= mc_max
+        mc_hi_from_m1 = self.m1_max / c1    # m1 < m1_max  <=>  Mc < m1_max / c1
+        mc_hi_from_m2 = self.m2_max / c2    # m2 < m2_max  <=>  Mc < m2_max / c2
+
+        # Mc must satisfy all of them: the tightest lower bound and the tightest upper bound.
+        lo = np.maximum(mc_lo_from_box, np.maximum(mc_lo_from_m1, mc_lo_from_m2))
+        hi = np.minimum(mc_hi_from_box, np.minimum(mc_hi_from_m1, mc_hi_from_m2))
+
+        # If the limits contradict each other (lo > hi), no Mc is allowed at this eta: collapse the
+        # interval to zero width so this eta contributes nothing to the area.
+        hi = np.maximum(hi, lo)
+
+        return lo, hi
+
+    def _support_area(self) -> float:
+        """
+        Area of the support in the (m1 >= m2) plane, i.e. the integral of the joint unnormalised density over (Mc,eta).
+
+        Change of variables to s = sqrt(1 - 4 eta) removes the eta -> 0.25 singularity in the integrand.
+
+        Integrated in s = sqrt(1 - 4 eta), where deta / sqrt(1 - 4 eta) = ds / 2 removes the
+        eta -> 0.25 singularity in the density. 
+        """
+        from scipy.integrate import quad
+
+        def integrand(s):
+            eta = (1 - s**2) / 4
+            # Evaluate the mcs allowed at this specific eta (lo, hi) and return the area of the Mc interval times the Jacobian factor.
+            lo, hi = self._mc_range_at_eta(np.asarray(eta))
+
+            # Return the (numerical) integrand of the area integral, which is the product of the Mc range and the Jacobian factor.
+            return 0.5 * eta ** (-6 / 5) * 0.5 * (hi**2 - lo**2)
+
+        # Minimum and maximum s = sqrt(1 - 4 eta) for the eta box. The integrand is zero outside this range.
+
+        # s decreases as eta increases, so eta_min -> s_hi and eta_max -> s_lo: the integral runs s_hi -> s_lo.
+        # Integrating s_lo -> s_hi instead flips the sign, absorbing the minus from deta = -(s/2) ds.
+        
+        s_lo, s_hi = np.sqrt(1 - 4 * self.eta_max), np.sqrt(1 - 4 * self.eta_min)
+        area, _ = quad(integrand, s_lo, s_hi, epsabs=0.0, epsrel=1e-10, limit=500)
+        return float(area)
+
+    def _setup_eta_sampler(self):
+
+        """Tabulate the CDF of eta ∝ eta^-6/5 (1-4 eta)^-1/2 on an evenly spaced eta grid, for
+        inverse-CDF sampling by linear interpolation (monotone, so draws cannot overshoot
+        [eta_min, eta_max])."""
+
+        eta_grid = np.linspace(self.eta_min, self.eta_max, self.num_grid)
+
+        density = eta_grid ** (-6 / 5) * (1 - 4 * eta_grid) ** (-1 / 2)
+
+        # Trapezoid CDF, anchored at 0 at eta_min.
+        cdf = np.concatenate(([0.0], np.cumsum(0.5 * (density[1:] + density[:-1]) * np.diff(eta_grid))))
+
+        self._eta_grid = self.xp.asarray(eta_grid)
+
+        self._eta_cdf = self.xp.asarray(cdf / cdf[-1])
+
+    def _in_support(self, mc: ArrayLike, eta: ArrayLike) -> ArrayLike:
+
+        # Check if (mc, eta) is in the support of the prior, i.e. in the box and satisfying the component-mass cut.
+        xp = self.xp
+
+        # Check if (mc, eta) is in the box.
+        in_box = (mc >= self.mc_min) & (mc <= self.mc_max) & (eta >= self.eta_min) & (eta <= self.eta_max)
+        
+        # Check if (mc, eta) satisfies the component-mass cut: m1_min < m1 < m1_max, m2_min < m2 < m2_max.
+        c1, c2 = _component_mass_coefficients(xp.clip(eta, self.eta_min, self.eta_max), xp=xp)
+        m1, m2 = c1 * mc, c2 * mc
+
+        return (in_box
+                & (m1 > self.m1_min) & (m1 < self.m1_max)
+                & (m2 > self.m2_min) & (m2 < self.m2_max))
+
+    def rvs(self, size: int | tuple[int, ...] = (1,), **kwargs) -> ArrayLike:
+        xp = self.xp
+
+        if isinstance(size, int):
+            size = (size,)
+
+        # Number of samples to draw in total.
+        n = int(np.prod(size))
+
+        mc_out = xp.empty(n)
+        eta_out = xp.empty(n)
+        filled = 0
+
+        # Rejection sampling: draw from the factorised density and reject outside the component-mass cut.
+        while filled < n:
+            # How many samples to draw. 
+            # Minimum 1024 as its possible alot of the draws are rejected. 
+            n_draw = max(2 * (n - filled), 1024)
+
+            # Draw from factorised mc 
+            u = xp.random.uniform(0, 1, size=n_draw)
+            mc = xp.sqrt(self.mc_min**2 + u * (self.mc_max**2 - self.mc_min**2))
+
+            # Draw from factorised eta using the tabulated inverse CDF.
+            eta = xp.interp(xp.random.uniform(0, 1, size=n_draw), self._eta_cdf, self._eta_grid)
+            eta = xp.clip(eta, self.eta_min, self.eta_max)  # guards floating-point rounding only
+
+            # Check if the drawn (mc, eta) are in the support of the prior.
+            keep = self._in_support(mc, eta)
+
+            # Fill the output arrays with the accepted samples, up to the requested number of samples.
+            n_keep = min(int(keep.sum()), n - filled)
+            mc_out[filled:filled + n_keep] = mc[keep][:n_keep]
+            eta_out[filled:filled + n_keep] = eta[keep][:n_keep]
+            filled += n_keep
+
+        samples = xp.stack([mc_out, eta_out], axis=-1).reshape(size + (2,))
+        return self._to_device(samples)
+
+    def logpdf(self, x: ArrayLike, **kwargs) -> ArrayLike:
+        xp = self.xp
+        x_arr = xp.asarray(x)
+        if x_arr.shape[-1] != 2:
+            raise ValueError("Expected last dimension of x to be 2.")
+
+        mc = x_arr[..., 0]
+        eta = x_arr[..., 1]
+        out = xp.full_like(mc, -xp.inf, dtype=xp.float64)
+
+        valid = self._in_support(mc, eta)
+        mc_v, eta_v = mc[valid], eta[valid]
+        
+        # log p = −log A + log Mc − (6/5)·log η −1/2*log(1 − 4η)
+        out[valid] = self.log_norm + xp.log(mc_v) - 1.2 * xp.log(eta_v) - 0.5 * xp.log(1 - 4 * eta_v)
+
+        return self._to_device(out)
+
+
+class CosineDeclination(Prior):
+    r"""
+    Prior p(x) ∝ cos(x) on [minimum, maximum] within [-pi/2, pi/2]: isotropic sky when sampling
+    the declination directly (rather than sin(dec), as eryn's SineUniform does).
+
+    .. math::
+        p(\delta) = \frac{\cos\delta}{\sin\delta_{\max} - \sin\delta_{\min}}
+    """
+
+    def __init__(self, minimum: float = -np.pi / 2, maximum: float = np.pi / 2, **kwargs):
+        """
+        Initializes the CosineDeclination instance.
+
+        Args:
+            minimum (float): Lower bound (rad), >= -pi/2. Default -pi/2.
+            maximum (float): Upper bound (rad), <= pi/2. Default pi/2.
+            **kwargs: Additional keyword arguments for the Prior.
+        """
+        if minimum < -np.pi / 2 or maximum > np.pi / 2:
+            raise ValueError(f"CosineDeclination bounds must lie within [-pi/2, pi/2], got ({minimum}, {maximum}).")
+
+        super().__init__(minimum=minimum, maximum=maximum, **kwargs)
+
+        self._sin_min = float(np.sin(minimum))
+
+        self._sin_range = float(np.sin(maximum) - np.sin(minimum))
+
+        self._log_norm = -float(np.log(self._sin_range))
+
+    def logpdf(self, x: ArrayLike, **kwargs) -> ArrayLike:
+        x_arr = self.xp.asarray(x)
+        # Return -inf outside the bounds, log(cos(x)) inside, with normalisation.
+        out = self.xp.full_like(x_arr, -self.xp.inf, dtype=self.xp.float64)
+        
+        mask = (x_arr >= self.minimum) & (x_arr <= self.maximum)
+        
+        out[mask] = self._log_norm + self.xp.log(self.xp.cos(x_arr[mask]))
+        
+        return self._to_device(out)
+
+    def rvs(self, size: int | tuple[int, ...] = (1,), **kwargs) -> ArrayLike:
+        if isinstance(size, int):
+        
+            size = (size,)
+        
+        u = self.xp.random.uniform(0, 1, size=size)
+        
+        return self._to_device(self.xp.arcsin(self._sin_min + u * self._sin_range))
+

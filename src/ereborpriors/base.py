@@ -13,7 +13,7 @@ from eryn.utils.transform import TransformContainer
 from eryn.utils.periodic import PeriodicContainer
 
 from ereborpriors import priors
-from ereborpriors.io import _Loader
+from ereborpriors.io import _Loader, _yaml_safe
 
 PRIOR_MODULES = [eryn.priors, priors]
 
@@ -94,6 +94,8 @@ def get_prior_from_entry(entry: typing.Dict[str, typing.Any]) -> tuple[str, Prio
         tuple[str, Prior | JointPrior]: A tuple containing the parameter name and the corresponding prior instance.
     """
     name = entry["name"]
+    if isinstance(name, list):  # joint-prior keys are tuples, written to YAML as lists
+        name = tuple(name)
     prior_type = entry["prior_type"]
     prior_kwargs = entry.get("prior_kwargs", {})
 
@@ -180,9 +182,9 @@ class GFBasePrior(ProbDistContainer):
             "branch_name": self.branch_name,
             "priors": [
                 {
-                    "name": name,
+                    "name": _yaml_safe(name),
                     "prior_type": prior.__class__.__name__,
-                    "prior_kwargs": {k: getattr(prior, k) for k in prior._repr_keys},
+                    "prior_kwargs": {k: _yaml_safe(getattr(prior, k)) for k in prior._repr_keys},
                 }
                 for name, prior in self.priors_in.items()
             ],
