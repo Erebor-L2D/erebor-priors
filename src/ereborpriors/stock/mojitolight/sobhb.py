@@ -66,6 +66,11 @@ class SOBHBPrior(GFBasePrior):
     - (Mc, eta) jointly uniform in component masses (cut by the component-mass box),
     - dist uniform in comoving volume (Planck15, sampled in Gpc), dec uniform on the sphere,
     - everything else uniform.
+
+    The orbital phase is sampled as ``phi_0``, the orbital phase at the data start (where the GW
+    frequency is ``f0``), and passed to the waveforms unchanged: GWTF_generator and
+    SOBBHTaylorT3TDIWaveform convert it to their coalescence phase themselves
+    (``phase_at_coalescence=False``).
     """
 
     branch_name = "sobbh"
@@ -159,7 +164,7 @@ class SOBHBPrior(GFBasePrior):
             "d_L": UniformInComovingVolume(1e-7, 1., name="luminosity distance", latex_label=r"$d_L$", unit=r"$\rm Gpc$"),
             "cos_iota": UniformDistribution(-1.0 + EPS, 1.0 - EPS, name="cos inclination", latex_label=r"$\cos \iota$", unit=None),
             "f0": UniformDistribution(f0_min, f0_max, name="Starting frequency", latex_label=r"$f_0$", unit=r"$\rm Hz$"),
-            "phi_coal": UniformDistribution(0, 2 * np.pi, name="Coalescence phase", latex_label=r"$\phi_c$", unit=r"$\rm rad$", boundary="periodic"),
+            "phi_0": UniformDistribution(0, 2 * np.pi, name="Orbital phase at data start", latex_label=r"$\phi_0$", unit=r"$\rm rad$", boundary="periodic"),
             "psi": UniformDistribution(0, 2 * np.pi, name="polarization angle", latex_label=r"$\psi$", unit=r"$\rm rad$", boundary="periodic"),
             "alpha": UniformDistribution(0, 2 * np.pi, name="right ascension", latex_label=r"$\alpha$", unit=r"$\rm rad$", boundary="periodic"),
             "sin_delta": UniformDistribution(-1 + EPS, 1 - EPS, name="sin declination", latex_label=r"$\sin \delta$", unit=None),
@@ -174,13 +179,13 @@ class SOBHBPrior(GFBasePrior):
         Returns:
             list[str]: A list of parameter names in the output basis.
         """
-        return ["m1", "m2", "s1", "s2", "d_L", "iota", "f0", "phi_coal", "psi", "alpha", "delta"]
+        return ["m1", "m2", "s1", "s2", "d_L", "iota", "f0", "phi_0", "psi", "alpha", "delta"]
 
     def get_transforms(self) -> TransformContainer:
         """
         Returns the transforms associated with the SOBHB prior. The output basis is the
         GWTF_generator / SOBBHTaylorT3TDIWaveform basis, in the same column order as the
-        sampling basis (d_L in Gpc, as both waveforms expect).
+        sampling basis (d_L in Gpc, as both waveforms expect). ``phi_0`` passes through unchanged.
 
         Returns:
             TransformContainer: The transforms associated with the SOBHB prior.
@@ -225,7 +230,7 @@ class SOBHBPrior(GFBasePrior):
             dict[str, float] | None: A dictionary of periodic parameters and their periods.
         """
         return {
-            "phi_coal": 2 * np.pi,
+            "phi_0": 2 * np.pi,
             "psi": 2 * np.pi,
             "alpha": 2 * np.pi,
         }
