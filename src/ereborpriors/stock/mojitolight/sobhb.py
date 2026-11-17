@@ -15,40 +15,40 @@ SOBHB_DEFAULT_M1_LIMS = (5.0, 100.0)
 SOBHB_DEFAULT_M2_LIMS = (1.0, 80.0)
 SOBHB_DEFAULT_ETA_LIMS = (0.0 + EPS, 0.25 - EPS)  # symmetric mass ratio limits (m1 >= m2)
 
-# Per-source (index = Source 0..5) search tiles from the September reliability tests
-# (September_search_reliability_tests/source_{i}/Run.py prior_bounds).
+# Per-source (index = Source 0..5) search tiles 
+# Note in our usuaul run we do not sample source 5 
 TILES_F0_MIN = [  # Hz
-    0.015195883255956893,
+    0.01523044572556501, 
     0.01,
     0.0055,
-    0.015195883255956893,
+    0.01523044572556501,
     0.007,
-    0.007,
+    0.007,  # Source 5 (placeholder tile: in the data but not sampled)
 ]
 TILES_F0_MAX = [  # Hz
-    0.01571878784380862,
-    0.010657987934884174,
+    0.01566440950100069,
+    0.010539116009603954,
     0.0056,
-    0.01571878784380862,
+    0.01566440950100069,
     0.0071,
-    0.0071,
+    0.0071,  # Source 5
 ]
 TILES_CHIRP_MASS_MIN = [  # Msun
-    57.00260957562929,
-    28.227482521129208,
+    58.31641286375667, 
+    29.783729431335413,
     60.0,
-    36.6078224011077,
+    37.59285709049653,
     70.0,
-    45.0,
+    45.0,  # Source 5
 ]
 
 TILES_CHIRP_MASS_MAX = [  # Msun
-    60.044990194190945,
-    32.04525217300808,
+    60.59973201883494,
+    32.498510135448974,
     65.0,
-    39.7915925925793,
+    39.88177477999402,
     75.0,
-    50.0,
+    50.0,  # Source 5
 ]
 
 CHIRP_MASS_SORTING = np.argsort(TILES_CHIRP_MASS_MIN)  # sort by chirp mass
