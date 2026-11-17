@@ -104,6 +104,7 @@ class SOBHBPrior(GFBasePrior):
     @classmethod
     def per_source_prior_factory(cls, 
                                 sort_with_chirp_mass: bool = False,
+                                num_leaves: typing.Optional[int] = None
                                 ) -> list[SOBHBPrior]:
         """
         Factory method to create a list of per-source SOBHB priors.
@@ -129,12 +130,18 @@ class SOBHBPrior(GFBasePrior):
         if not (len(f0_min) == len(f0_max) == len(chirp_mass_min) == len(chirp_mass_max)):
             raise ValueError("All input lists must have the same length.")
 
+        if num_leaves is not None:
+            if num_leaves > len(f0_min):
+                raise ValueError("num_leaves cannot be greater than the number of sources.")
+        else:
+            num_leaves = len(f0_min)
+
         return [
             cls.prior_factory(f0_min=f0_min[i],
                                 f0_max=f0_max[i],
                                 chirp_mass_min=chirp_mass_min[i],
                                 chirp_mass_max=chirp_mass_max[i])
-            for i in range(len(f0_min))
+            for i in range(num_leaves)
         ]
 
     @staticmethod
